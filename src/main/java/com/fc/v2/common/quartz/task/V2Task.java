@@ -2,9 +2,11 @@ package com.fc.v2.common.quartz.task;
 import cn.hutool.core.date.DateUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fc.v2.model.auto.TSysUser;
+import com.fc.v2.service.ITIsAccFlowService;
 import com.fc.v2.service.ITIsHazTaskService;
 import com.fc.v2.service.ITIsRectApplyService;
 import com.fc.v2.service.ITSysUserService;
+import com.fc.v2.service.acc.AccUrgeScreen;
 import com.fc.v2.service.haz.RoundScreen;
 import com.fc.v2.service.rect.UrgeScreen;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +31,9 @@ public class V2Task {
 
 	@Autowired
 	private ITIsRectApplyService rectApplyService;
+
+	@Autowired
+	private ITIsAccFlowService accFlowService;
 
     /**
      * 无参的任务
@@ -72,5 +77,16 @@ public class V2Task {
 	{
 		UrgeScreen screen = rectApplyService.urgeScan();
 		System.out.println("整改申请催办：" + screen.getMessage() + " 执行时间:" + DateUtil.now());
+	}
+
+	/**
+	 * 事故调查处置层级超时催办（由定时任务配置：v2Task.urgeAccFlow()）。
+	 * 只催在途（调查中/已认定/处置中）、卡在某一层超过该层时限的单；同一轮同一级只催一次并留痕。
+	 * 已作废/已结案/退回上报人的单扫不到，催办不碰单子任何一栏。
+	 */
+	public void urgeAccFlow()
+	{
+		AccUrgeScreen screen = accFlowService.urgeScan();
+		System.out.println("事故调查处置催办：" + screen.getMessage() + " 执行时间:" + DateUtil.now());
 	}
 }

@@ -2,21 +2,142 @@
 -- 列名与基线实体契约（@TableName/@TableField）逐列对齐，改列必须同步实体。
 -- 库：hai_008
 
-CREATE TABLE IF NOT EXISTS t_is_acc_flow (
+-- ===================== 事故报告调查处置逐级流转 =====================
+-- 一张单一行，固定字段：事故单号、关联事故（哪起、什么等级）、上报人、上报时间、
+-- 当前待办层级、状态、结论、结案时间。状态只六档，不许自造：
+--   0已上报 1调查中 2已认定 3处置中 4已结案 5已作废。
+-- 上报即进第一级（无单独草稿态）；"已上报"只在单子落在上报人手里时出现（补材料退回）。
+-- 四级"路"调查/认定/处置/结案中，前三路由层级配置的 phase_no 挂：
+--   1调查→调查中 2认定→已认定 3处置→处置中；结案不是一级，是末级办结后的终态。
+-- 重塑：旧 t_is_acc_flow 是 advance/rollback 原型（stage/content/last_action），契约废弃，先落 DROP 重建。
+DROP TABLE IF EXISTS t_is_acc_flow;
+
+-- 事故台账：单子关联的"哪起事故、什么等级"。调查处置单只抄存事故号与等级，落单后不许改。
+CREATE TABLE IF NOT EXISTS t_is_accident (
   id bigint NOT NULL COMMENT '主键',
-  biz_no varchar(64) DEFAULT NULL COMMENT '事故报告处置单号',
-  stage int DEFAULT NULL COMMENT '当前处置段 0..3（初报/调查/处置/结案封卷）',
-  status int DEFAULT NULL COMMENT '单子落定 0未起 1在办 2已封存',
-  content varchar(255) DEFAULT NULL COMMENT '单上记事',
-  last_action varchar(64) DEFAULT NULL COMMENT '最近一次过口动作',
+  accident_no varchar(64) DEFAULT NULL COMMENT '事故号（哪一起）',
+  title varchar(255) DEFAULT NULL COMMENT '事故名称（如：罐体泄漏事故）',
+  acc_level int DEFAULT NULL COMMENT '事故等级 1一般 2较大 3重大 4特别重大',
+  occurred_at datetime DEFAULT NULL COMMENT '发生时间',
   del_flag int DEFAULT '0' COMMENT '删除标记 0正常 1删除',
   create_by varchar(64) DEFAULT NULL COMMENT '创建者',
   create_time datetime DEFAULT NULL COMMENT '创建时间',
   update_by varchar(64) DEFAULT NULL COMMENT '更新者',
   update_time datetime DEFAULT NULL COMMENT '更新时间',
   remark varchar(500) DEFAULT NULL COMMENT '备注',
-  PRIMARY KEY (id)
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_accident_no (accident_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='事故台账';
+
+-- 办理层级配置：次序与所属"路"由平台写死，不抄在单子上；链条永远现取 status=0 按 level_no 升序。
+-- phase_no 把每一级挂到一条路上：单子挂到哪级，状态就取那一级所在路对应的固定档（1/2/3）。
+CREATE TABLE IF NOT EXISTS t_is_acc_level (
+  id bigint NOT NULL COMMENT '主键',
+  level_no int DEFAULT NULL COMMENT '层级次序（1起；上报后进最小号，办结进比它大的下一号）',
+  level_name varchar(64) DEFAULT NULL COMMENT '层级名（调查组核/认定组定/处置组办……）',
+  phase_no int DEFAULT NULL COMMENT '所属路 1调查 2认定 3处置（决定单子挂本层时的状态档）',
+  signer_role_id bigint DEFAULT NULL COMMENT '本层办理角色（角色对不上，这层的单连看都看不到）',
+  signer_role_name varchar(64) DEFAULT NULL COMMENT '本层办理角色名（抄存）',
+  urge_hours int DEFAULT '48' COMMENT '卡在本层的时限（小时）：进层起超过此时限未办理即催办',
+  status int DEFAULT '0' COMMENT '情形 0启用 1停用（有在途单挂在本层时不许停用）',
+  del_flag int DEFAULT '0' COMMENT '删除标记 0正常 1删除',
+  create_by varchar(64) DEFAULT NULL COMMENT '创建者',
+  create_time datetime DEFAULT NULL COMMENT '创建时间',
+  update_by varchar(64) DEFAULT NULL COMMENT '更新者',
+  update_time datetime DEFAULT NULL COMMENT '更新时间',
+  remark varchar(500) DEFAULT NULL COMMENT '备注',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_acc_level_no (level_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='事故调查处置办理层级配置（平台写死）';
+
+-- 事故报告调查处置单主单：一行一张。状态只许六档；结论 1办结 2否决，结案那一刻写死。
+-- 否决即流程自然终止（六档无"已否决"，落已结案+结论否决，不留流程里）。
+-- 结案后只许管理员把 status 翻成 5 作废归档，其余各栏（含结论、事故等级）谁都不许动。
+-- 补材料退回上报人时回到 0已上报，round_no 加一后重新上报、从第一级重头走起，旧轮次意见全部留着不抹。
+CREATE TABLE IF NOT EXISTS t_is_acc_flow (
+  id bigint NOT NULL COMMENT '主键',
+  flow_no varchar(64) DEFAULT NULL COMMENT '事故单号',
+  accident_id bigint DEFAULT NULL COMMENT '关联事故（哪起）',
+  accident_no varchar(64) DEFAULT NULL COMMENT '关联事故号（抄存）',
+  accident_level int DEFAULT NULL COMMENT '关联事故等级 1一般 2较大 3重大 4特别重大（落单后不许改）',
+  reporter varchar(64) DEFAULT NULL COMMENT '上报人',
+  report_time datetime DEFAULT NULL COMMENT '上报时间（补材料重报刷新为重报时刻）',
+  cur_level_no int DEFAULT NULL COMMENT '当前待办层级（只此一个；退回上报人/结案后为空）',
+  status int DEFAULT NULL COMMENT '状态 0已上报 1调查中 2已认定 3处置中 4已结案 5已作废',
+  conclusion int DEFAULT NULL COMMENT '结论 1办结 2否决（结案写死，之前为空）',
+  closed_time datetime DEFAULT NULL COMMENT '结案时间（结案写死，之前为空）',
+  round_no int DEFAULT '1' COMMENT '当前办理轮次（首轮1；每补材料重报一轮加一）',
+  level_entered_at datetime DEFAULT NULL COMMENT '进入当前待办层级的时刻（催办计时起点）',
+  del_flag int DEFAULT '0' COMMENT '删除标记 0正常 1删除',
+  create_by varchar(64) DEFAULT NULL COMMENT '创建者',
+  create_time datetime DEFAULT NULL COMMENT '创建时间',
+  update_by varchar(64) DEFAULT NULL COMMENT '更新者',
+  update_time datetime DEFAULT NULL COMMENT '更新时间',
+  remark varchar(500) DEFAULT NULL COMMENT '备注（上报事由/补齐说明落这里）',
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_flow_no (flow_no),
+  KEY idx_flow_status_level (status, cur_level_no),
+  KEY idx_flow_reporter (reporter)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='事故报告调查处置单';
+
+-- 办理意见留痕：一张单多条，按轮次+层级+时刻排，每一级的意见、办理人、办理时间一查就有。
+-- 办理四动作 FINISH办结/VETO否决/SUPPLEMENT补充材料/TRANSFER转交他级，必带层级与意见；
+-- 另记流程事件 REPORT上报/RESUBMIT补齐重报/WITHDRAW撤回/ARCHIVE归档（层级可空）。
+-- 代办：实际落笔者 handler，原办理人 intended_handler，代办原因 agent_reason——代办不改层级归属，原办理人该是谁还是谁。
+-- 转交他级：本层意见 comment 必须写全（不许只留一句"转走了"），target_level_* 写明转到哪级。
+CREATE TABLE IF NOT EXISTS t_is_acc_handle (
+  id bigint NOT NULL COMMENT '主键',
+  flow_id bigint NOT NULL COMMENT '所属处置单',
+  flow_no varchar(64) DEFAULT NULL COMMENT '事故单号（抄存）',
+  round_no int DEFAULT NULL COMMENT '本轮办理轮次（重报后在新轮次里重走第一级）',
+  level_no int DEFAULT NULL COMMENT '意见所属层级（流程事件为空）',
+  level_name varchar(64) DEFAULT NULL COMMENT '层级名（抄存）',
+  action varchar(16) DEFAULT NULL COMMENT '动作 REPORT/FINISH/VETO/SUPPLEMENT/TRANSFER/RESUBMIT/WITHDRAW/ARCHIVE',
+  handler varchar(64) DEFAULT NULL COMMENT '实际落笔者（代办时即代办人）',
+  intended_handler varchar(64) DEFAULT NULL COMMENT '原办理人（代办时与落笔者不同；正常办理两者相同）',
+  agent_flag int DEFAULT '0' COMMENT '是否代办 0否 1是',
+  agent_reason varchar(255) DEFAULT NULL COMMENT '代办原因（代办必填）',
+  target_level_no int DEFAULT NULL COMMENT '转交目标层级号（仅转交）',
+  target_level_name varchar(64) DEFAULT NULL COMMENT '转交目标层级名（仅转交）',
+  comment varchar(500) DEFAULT NULL COMMENT '本层处理意见（办理/转交必填，转交须把本级意见记全）',
+  handle_time datetime DEFAULT NULL COMMENT '办理/事件时刻',
+  create_by varchar(64) DEFAULT NULL COMMENT '创建者',
+  create_time datetime DEFAULT NULL COMMENT '创建时间',
+  PRIMARY KEY (id),
+  KEY idx_handle_flow (flow_id, handle_time, id),
+  KEY idx_handle_round_level (flow_id, round_no, level_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='事故调查处置办理意见留痕';
+
+-- 催办留痕：超过层级配置的 urge_hours 还卡在某一级，定时扫描催一次。
+-- 去重口径：同一轮同一级、且"本次进层时刻"不晚于上次催办时刻的不重复催
+-- （转交出去又转回来会刷新进层时刻，再次超时照样催）。
+-- 已作废/已结案/退回上报人的单扫不到（只扫 status IN 1,2,3 在途），催不催都不碰单子各栏。
+CREATE TABLE IF NOT EXISTS t_is_acc_urge (
+  id bigint NOT NULL COMMENT '主键',
+  flow_id bigint NOT NULL COMMENT '所属处置单',
+  flow_no varchar(64) DEFAULT NULL COMMENT '事故单号（抄存）',
+  round_no int DEFAULT NULL COMMENT '催办时所在轮次',
+  level_no int DEFAULT NULL COMMENT '卡住的层级',
+  level_name varchar(64) DEFAULT NULL COMMENT '卡住的层级名',
+  overdue_hours int DEFAULT NULL COMMENT '催办时已卡了多少小时',
+  urged_at datetime DEFAULT NULL COMMENT '催办时刻',
+  detail varchar(500) DEFAULT NULL COMMENT '催办话术',
+  create_by varchar(64) DEFAULT NULL COMMENT '创建者',
+  create_time datetime DEFAULT NULL COMMENT '创建时间',
+  PRIMARY KEY (id),
+  KEY idx_acc_urge_flow_round (flow_id, round_no, level_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='事故调查处置层级超时催办留痕';
+
+-- 种子：本月罐体泄漏事故一起（一般事故）。
+INSERT IGNORE INTO t_is_accident (id, accident_no, title, acc_level, occurred_at, del_flag, create_by, create_time, remark)
+VALUES (9100, 'ACC202609-01', '罐体泄漏事故', 1, '2026-09-12 09:30:00', 0, 'seed', NOW(), '从发现到结案历时三周、两次找不到签字人的那起');
+
+-- 种子：三级次序写死——调查组核 → 认定组定 → 处置组办；末级办结即结案。
+-- 办理角色取系统现有角色演示：一、二级挂"用户"角色，末级挂"管理员"角色；上线按平台实际岗位角色改配。
+INSERT IGNORE INTO t_is_acc_level (id, level_no, level_name, phase_no, signer_role_id, signer_role_name, urge_hours, status, del_flag, create_by, create_time, remark)
+VALUES (9201, 1, '调查组核查', 1, 488289006124007424, '用户', 48, 0, 0, 'seed', NOW(), '第一级（调查路）：上报后进此级，单子状态=调查中'),
+       (9202, 2, '认定组认定', 2, 488289006124007424, '用户', 48, 0, 0, 'seed', NOW(), '第二级（认定路）：单子状态=已认定'),
+       (9203, 3, '处置组处置', 3, 488243256161730560, '管理员', 72, 0, 0, 'seed', NOW(), '末级（处置路）：此级办结即结案办结');
 
 -- 整批导入核对行：一行归一行验、一行归一行落。行次 row_no 进门那一刻按原文件先后记下，
 -- 表头不算行、第一条数据从 1 起，之后谁查被退的行都照着这个号定位原表，不许重排。

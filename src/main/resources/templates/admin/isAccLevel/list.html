@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh" xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.pollix.at/thymeleaf/shiro">
+<head>
+    <th:block th:include="include :: header('事故调查处置办理层级配置')"/>
+</head>
+<body class="pear-container">
+
+<div class="layui-card">
+    <div class="layui-card-body" style="color:#888;font-size:13px;">
+        层级次序与所属"路"由平台写死、不抄在处置单上：上报进最小号，办结进比它大的下一号，末级办结即结案。
+        每一级挂一条路（调查/认定/处置）——单子挂到哪级，状态就取那一级所在路的档；再绑一个办理角色，
+        角色对不上，这层的单连看都看不到。停用一级前，挂在这级的在途单必须先走完。
+    </div>
+</div>
+
+<div class="layui-card">
+    <div class="layui-card-body">
+        <button shiro:hasPermission="isAccLevel:add"
+                class="pear-btn pear-btn-md pear-btn-success" onclick="openAdd()">
+            <i class="layui-icon layui-icon-add-1"></i> 登记一级
+        </button>
+    </div>
+</div>
+
+<div class="layui-card">
+    <div class="layui-card-body">
+        <table id="lv-table" lay-filter="lv-table"></table>
+    </div>
+</div>
+
+<script type="text/html" id="lv-phase">
+    {{#  if(d.phaseNo===1){ }}<span class="layui-badge layui-bg-orange">调查路</span>
+    {{#  } else if(d.phaseNo===2){ }}<span class="layui-badge layui-bg-cyan">认定路</span>
+    {{#  } else if(d.phaseNo===3){ }}<span class="layui-badge" style="background:#9c27b0;">处置路</span>
+    {{#  } else { }}<span style="color:#FF5722;">未挂路</span>{{#  } }}
+</script>
+<script type="text/html" id="lv-status">
+    {{#  if(d.status===0){ }}<span class="layui-badge layui-bg-green">启用</span>
+    {{#  } else { }}<span class="layui-badge layui-bg-gray">停用</span>{{#  } }}
+</script>
+<script type="text/html" id="lv-bar">
+    {{#  if(d.status===0){ }}
+    <button shiro:hasPermission="isAccLevel:add" class="pear-btn pear-btn-warming pear-btn-sm" lay-event="retire">停用</button>
+    {{#  } }}
+</script>
+
+<th:block th:include="include :: footer"/>
+<script>
+    layui.use(['table', 'jquery', 'layer', 'form'], function () {
+        let table = layui.table, $ = layui.jquery, layer = layui.layer, form = layui.form;
+        let MP = rootPath + "/isAccLevel/";
+
+        table.render({
+            elem: '#lv-table',
+            url: MP + 'list',
+            method: 'get',
+            page: true,
+            skin: 'line',
+            cols: [[
+                {field: 'levelNo', title: '层级次序', width: 100, align: 'center', sort: true},
+                {field: 'levelName', title: '层级名', minWidth: 160},
+                {field: 'phaseNo', title: '所属路', width: 110, align: 'center', templet: '#lv-phase'},
+                {field: 'signerRoleId', title: '办理角色ID', width: 200, align: 'center'},
+                {field: 'signerRoleName', title: '办理角色名', width: 130},
+                {field: 'urgeHours', title: '卡办时限(小时)', width: 130, align: 'center'},
+                {field: 'status', title: '情形', width: 90, align: 'center', templet: '#lv-status'},
+                {field: 'remark', title: '备注', minWidth: 160},
+                {title: '操作', width: 100, align: 'center', fixed: 'right', toolbar: '#lv-bar'}
+            ]]
+        });
+
+        window.openAdd = function () {
+            layer.open({
+                type: 1, title: '登记一级办理层级', area: ['520px', '460px'],
+                content:
+                    '<form class="layui-form" style="padding:20px 10px 0 0;" id="lv-form">' +
+                    '  <div class="layui-form-item"><label class="layui-form-label">层级次序</label>' +
+                    '    <div class="layui-input-block"><input name="levelNo" class="layui-input" placeholder="从1起，不许重号"></div></div>' +
+                    '  <div class="layui-form-item"><label class="layui-form-label">层级名</label>' +
+                    '    <div class="layui-input-block"><input name="levelName" class="layui-input" placeholder="如：调查组核查"></div></div>' +
+                    '  <div class="layui-form-item"><label class="layui-form-label">所属路</label>' +
+                    '    <div class="layui-input-block"><select name="phaseNo">' +
+                    '      <option value="1">1 调查路（单子状态=调查中）</option>' +
+                    '      <option value="2">2 认定路（单子状态=已认定）</option>' +
+                    '      <option value="3">3 处置路（单子状态=处置中）</option>' +
+                    '    </select></div></div>' +
+                    '  <div class="layui-form-item"><label class="layui-form-label">办理角色ID</label>' +
+                    '    <div class="layui-input-block"><input name="signerRoleId" class="layui-input" placeholder="角色对不上，这层的单看不到"></div></div>' +
+                    '  <div class="layui-form-item"><label class="layui-form-label">办理角色名</label>' +
+                    '    <div class="layui-input-block"><input name="signerRoleName" class="layui-input" placeholder="抄存，便于台账识读"></div></div>' +
+                    '  <div class="layui-form-item"><label class="layui-form-label">卡办时限</label>' +
+                    '    <div class="layui-input-block"><input name="urgeHours" class="layui-input" placeholder="小时，默认48"></div></div>' +
+                    '  <div class="layui-form-item"><label class="layui-form-label">备注</label>' +
+                    '    <div class="layui-input-block"><input name="remark" class="layui-input"></div></div>' +
+                    '</form>',
+                success: function () { form.render(); },
+                btn: ['登记', '取消'],
+                yes: function (idx) {
+                    let f = {};
+                    $('#lv-form').serializeArray().forEach(function (p) { if (p.value !== '') f[p.name] = p.value; });
+                    $.post(MP + 'add', f, function (r) {
+                        layer.msg(r.msg, {icon: r.code === 200 ? 1 : 2});
+                        if (r.code === 200) { layer.close(idx); table.reload('lv-table'); }
+                    });
+                }
+            });
+        };
+
+        table.on('tool(lv-table)', function (obj) {
+            if (obj.event === 'retire') {
+                layer.confirm('有在途单挂在这级时会被拦下。确认停用第' + obj.data.levelNo + '级？',
+                    {icon: 3, title: '停用层级'}, function (idx) {
+                        $.post(MP + 'retire', {id: obj.data.id}, function (r) {
+                            layer.close(idx);
+                            layer.msg(r.msg, {icon: r.code === 200 ? 1 : 2});
+                            if (r.code === 200) table.reload('lv-table');
+                        });
+                    });
+            }
+        });
+    });
+</script>
+</body>
+</html>

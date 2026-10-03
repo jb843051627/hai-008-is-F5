@@ -17,8 +17,12 @@ import java.util.Date;
 /**
  * 事故报告调查处置单对象 t_is_acc_flow
  *
+ * 一行一张，字段固定：事故单号、关联事故（哪起、什么等级）、上报人、上报时间、
+ * 当前待办层级、状态、结论、结案时间。状态只在六档内取值，不许自造：
+ * 0已上报 1调查中 2已认定 3处置中 4已结案 5已作废。
+ *
  * @author fuce
- * @date 2026-09-12
+ * @date 2026-10-03
  */
 @TableName("t_is_acc_flow")
 @ApiModel(value = "TIsAccFlow", description = "事故报告调查处置单")
@@ -31,30 +35,69 @@ public class TIsAccFlow implements Serializable {
     @ApiModelProperty(value = "主键")
     private Long id;
 
-    /** 事故报告处置单号 */
-    @TableField("biz_no")
-    @ApiModelProperty(value = "事故报告处置单号")
-    private String bizNo;
+    /** 事故单号 */
+    @TableField("flow_no")
+    @ApiModelProperty(value = "事故单号")
+    private String flowNo;
 
-    /** 当前处置段 0..3（初报/调查/处置/结案封卷） */
-    @TableField("stage")
-    @ApiModelProperty(value = "当前处置段 0..3（初报/调查/处置/结案封卷）")
-    private Integer stage;
+    /** 关联事故（哪起） */
+    @TableField("accident_id")
+    @JsonSerialize(using = ToStringSerializer.class)
+    @ApiModelProperty(value = "关联事故")
+    private Long accidentId;
 
-    /** 单子落定 0未起 1在办 2已封存 */
+    /** 关联事故号（抄存） */
+    @TableField("accident_no")
+    @ApiModelProperty(value = "关联事故号")
+    private String accidentNo;
+
+    /** 关联事故等级 1一般 2较大 3重大 4特别重大（落单后不许改） */
+    @TableField("accident_level")
+    @ApiModelProperty(value = "关联事故等级 1一般 2较大 3重大 4特别重大")
+    private Integer accidentLevel;
+
+    /** 上报人 */
+    @TableField("reporter")
+    @ApiModelProperty(value = "上报人")
+    private String reporter;
+
+    /** 最近一次上报时间（补材料重报刷新为重报时刻） */
+    @TableField("report_time")
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    @ApiModelProperty(value = "上报时间")
+    private Date reportTime;
+
+    /** 当前待办层级（只此一个；退回上报人/结案后为空） */
+    @TableField("cur_level_no")
+    @ApiModelProperty(value = "当前待办层级")
+    private Integer curLevelNo;
+
+    /** 状态 0已上报 1调查中 2已认定 3处置中 4已结案 5已作废 */
     @TableField("status")
-    @ApiModelProperty(value = "单子落定 0未起 1在办 2已封存")
+    @ApiModelProperty(value = "状态 0已上报 1调查中 2已认定 3处置中 4已结案 5已作废")
     private Integer status;
 
-    /** 单上记事 */
-    @TableField("content")
-    @ApiModelProperty(value = "单上记事")
-    private String content;
+    /** 结论 1办结 2否决（结案写死，之前为空） */
+    @TableField("conclusion")
+    @ApiModelProperty(value = "结论 1办结 2否决")
+    private Integer conclusion;
 
-    /** 最近一次过口动作 */
-    @TableField("last_action")
-    @ApiModelProperty(value = "最近一次过口动作")
-    private String lastAction;
+    /** 结案时间（结案写死，之前为空） */
+    @TableField("closed_time")
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    @ApiModelProperty(value = "结案时间")
+    private Date closedTime;
+
+    /** 当前办理轮次（首轮1；每补材料重报一轮加一） */
+    @TableField("round_no")
+    @ApiModelProperty(value = "当前办理轮次")
+    private Integer roundNo;
+
+    /** 进入当前待办层级的时刻（催办计时起点） */
+    @TableField("level_entered_at")
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    @ApiModelProperty(value = "进入当前待办层级的时刻")
+    private Date levelEnteredAt;
 
     /** 删除标记 0正常 1删除 */
     @TableField("del_flag")
@@ -83,7 +126,7 @@ public class TIsAccFlow implements Serializable {
     @ApiModelProperty(value = "更新时间")
     private Date updateTime;
 
-    /** 备注 */
+    /** 备注（上报事由/补齐说明） */
     @TableField("remark")
     @ApiModelProperty(value = "备注")
     private String remark;
@@ -96,20 +139,60 @@ public class TIsAccFlow implements Serializable {
         this.id = id;
     }
 
-    public String getBizNo() {
-        return bizNo;
+    public String getFlowNo() {
+        return flowNo;
     }
 
-    public void setBizNo(String bizNo) {
-        this.bizNo = bizNo;
+    public void setFlowNo(String flowNo) {
+        this.flowNo = flowNo;
     }
 
-    public Integer getStage() {
-        return stage;
+    public Long getAccidentId() {
+        return accidentId;
     }
 
-    public void setStage(Integer stage) {
-        this.stage = stage;
+    public void setAccidentId(Long accidentId) {
+        this.accidentId = accidentId;
+    }
+
+    public String getAccidentNo() {
+        return accidentNo;
+    }
+
+    public void setAccidentNo(String accidentNo) {
+        this.accidentNo = accidentNo;
+    }
+
+    public Integer getAccidentLevel() {
+        return accidentLevel;
+    }
+
+    public void setAccidentLevel(Integer accidentLevel) {
+        this.accidentLevel = accidentLevel;
+    }
+
+    public String getReporter() {
+        return reporter;
+    }
+
+    public void setReporter(String reporter) {
+        this.reporter = reporter;
+    }
+
+    public Date getReportTime() {
+        return reportTime;
+    }
+
+    public void setReportTime(Date reportTime) {
+        this.reportTime = reportTime;
+    }
+
+    public Integer getCurLevelNo() {
+        return curLevelNo;
+    }
+
+    public void setCurLevelNo(Integer curLevelNo) {
+        this.curLevelNo = curLevelNo;
     }
 
     public Integer getStatus() {
@@ -120,20 +203,36 @@ public class TIsAccFlow implements Serializable {
         this.status = status;
     }
 
-    public String getContent() {
-        return content;
+    public Integer getConclusion() {
+        return conclusion;
     }
 
-    public void setContent(String content) {
-        this.content = content;
+    public void setConclusion(Integer conclusion) {
+        this.conclusion = conclusion;
     }
 
-    public String getLastAction() {
-        return lastAction;
+    public Date getClosedTime() {
+        return closedTime;
     }
 
-    public void setLastAction(String lastAction) {
-        this.lastAction = lastAction;
+    public void setClosedTime(Date closedTime) {
+        this.closedTime = closedTime;
+    }
+
+    public Integer getRoundNo() {
+        return roundNo;
+    }
+
+    public void setRoundNo(Integer roundNo) {
+        this.roundNo = roundNo;
+    }
+
+    public Date getLevelEnteredAt() {
+        return levelEnteredAt;
+    }
+
+    public void setLevelEnteredAt(Date levelEnteredAt) {
+        this.levelEnteredAt = levelEnteredAt;
     }
 
     public Integer getDelFlag() {

@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh" xmlns:th="http://www.thymeleaf.org" xmlns:sec="http://www.pollix.at/thymeleaf/shiro">
+<head>
+    <th:block th:include="include :: header('事故报告调查处置逐级流转')"/>
+</head>
+<body class="pear-container">
+
+<!-- 一屏点算：已作废不参与统计；我的待办只数轮到我这层的 -->
+<div class="layui-card">
+    <div class="layui-card-body">
+        <div class="layui-row layui-col-space10">
+            <div class="layui-col-xs3">
+                <div class="layui-card" style="border-left:4px solid #9c27b0;">
+                    <div class="layui-card-header">我的待办</div>
+                    <div class="layui-card-body">
+                        <span id="st-todo" style="font-size:28px;color:#9c27b0;">0</span> 张
+                    </div>
+                </div>
+            </div>
+            <div class="layui-col-xs3">
+                <div class="layui-card" style="border-left:4px solid #FFB800;">
+                    <div class="layui-card-header">调查中</div>
+                    <div class="layui-card-body">
+                        <span id="st-investigating" style="font-size:28px;color:#FFB800;">0</span> 张
+                    </div>
+                </div>
+            </div>
+            <div class="layui-col-xs3">
+                <div class="layui-card" style="border-left:4px solid #1E9FFF;">
+                    <div class="layui-card-header">已认定</div>
+                    <div class="layui-card-body">
+                        <span id="st-determined" style="font-size:28px;color:#1E9FFF;">0</span> 张
+                    </div>
+                </div>
+            </div>
+            <div class="layui-col-xs3">
+                <div class="layui-card" style="border-left:4px solid #5FB878;">
+                    <div class="layui-card-header">处置中</div>
+                    <div class="layui-card-body">
+                        <span id="st-disposing" style="font-size:28px;color:#5FB878;">0</span> 张
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="layui-row layui-col-space10" style="margin-top:10px;">
+            <div class="layui-col-xs4">
+                <div class="layui-card">
+                    <div class="layui-card-header">已上报（在上报人手里/补材料退回）</div>
+                    <div class="layui-card-body">
+                        <span id="st-reported" style="font-size:26px;color:#01AAED;">0</span> 张
+                    </div>
+                </div>
+            </div>
+            <div class="layui-col-xs4">
+                <div class="layui-card">
+                    <div class="layui-card-header">结案：办结 / 否决</div>
+                    <div class="layui-card-body">
+                        <span style="font-size:22px;color:#5FB878;" id="st-finished">0</span>
+                        <span style="color:#888;"> / </span>
+                        <span style="font-size:22px;color:#FF5722;" id="st-vetoed">0</span> 张
+                    </div>
+                </div>
+            </div>
+            <div class="layui-col-xs4">
+                <div class="layui-card">
+                    <div class="layui-card-header">催办</div>
+                    <div class="layui-card-body">
+                        <button shiro:hasPermission="isAccFlow:urge" type="button"
+                                class="pear-btn pear-btn-md pear-btn-warming" onclick="runUrge()">
+                            <i class="layui-icon layui-icon-notice"></i> 立即催办一轮
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="layui-card">
+    <div class="layui-card-body">
+        <form class="layui-form" action="">
+            <div class="layui-form-item">
+                <label class="layui-form-label">状态</label>
+                <div class="layui-input-inline">
+                    <select name="status" class="layui-input">
+                        <option value="">全部</option>
+                        <option value="0">已上报</option>
+                        <option value="1">调查中</option>
+                        <option value="2">已认定</option>
+                        <option value="3">处置中</option>
+                        <option value="4">已结案</option>
+                        <option value="5">已作废</option>
+                    </select>
+                </div>
+                <label class="layui-form-label">事故单号</label>
+                <div class="layui-input-inline">
+                    <input name="flowNo" class="layui-input" placeholder="单号前缀">
+                </div>
+                <button class="pear-btn pear-btn-md pear-btn-primary" lay-submit lay-filter="af-query">
+                    <i class="layui-icon layui-icon-search"></i> 查询
+                </button>
+                <button type="reset" class="pear-btn pear-btn-md">
+                    <i class="layui-icon layui-icon-refresh"></i> 重置
+                </button>
+                <button shiro:hasPermission="isAccFlow:report" type="button"
+                        class="pear-btn pear-btn-md pear-btn-success" style="margin-left:16px;" onclick="openReport()">
+                    <i class="layui-icon layui-icon-add-1"></i> 上报事故单
+                </button>
+                <button type="button" class="pear-btn pear-btn-md" onclick="loadScope('todo')">
+                    只看我的待办
+                </button>
+                <button type="button" class="pear-btn pear-btn-md" onclick="loadScope('reported')">
+                    我上报的
+                </button>
+                <button type="button" class="pear-btn pear-btn-md" onclick="loadScope('all')">
+                    全部台账
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="layui-card">
+    <div class="layui-card-body">
+        <table id="af-table" lay-filter="af-table"></table>
+    </div>
+</div>
+
+<script type="text/html" id="af-status">
+    {{#  if(d.status===0){ }}<span class="layui-badge layui-bg-blue">已上报</span>
+    {{#  } else if(d.status===1){ }}<span class="layui-badge layui-bg-orange">调查中</span>
+    {{#  } else if(d.status===2){ }}<span class="layui-badge layui-bg-cyan">已认定</span>
+    {{#  } else if(d.status===3){ }}<span class="layui-badge" style="background:#5FB878;">处置中</span>
+    {{#  } else if(d.status===4){ }}<span class="layui-badge layui-bg-green">已结案</span>
+    {{#  } else if(d.status===5){ }}<span class="layui-badge layui-bg-gray">已作废</span>{{#  } }}
+</script>
+<script type="text/html" id="af-level">
+    {{#  if(d.curLevelNo===null || d.curLevelNo===undefined){ }}<span style="color:#aaa;">—</span>
+    {{#  } else { }}第 {{d.curLevelNo}} 级{{#  } }}
+</script>
+<script type="text/html" id="af-conclusion">
+    {{#  if(d.conclusion===1){ }}<span style="color:#5FB878;">办结</span>
+    {{#  } else if(d.conclusion===2){ }}<span style="color:#FF5722;">否决</span>
+    {{#  } else { }}<span style="color:#aaa;">待结案</span>{{#  } }}
+</script>
+<script type="text/html" id="af-bar">
+    <button shiro:hasPermission="isAccFlow:list" class="pear-btn pear-btn-primary pear-btn-sm" lay-event="detail">单/意见</button>
+    {{#  if(d.status===1 || d.status===2 || d.status===3){ }}
+    <button shiro:hasPermission="isAccFlow:handle" class="pear-btn pear-btn-warming pear-btn-sm" lay-event="handle">办理</button>
+    {{#  } }}
+    {{#  if(d.status===0){ }}
+    <button shiro:hasPermission="isAccFlow:report" class="pear-btn pear-btn-normal pear-btn-sm" lay-event="resubmit">补齐重报</button>
+    {{#  } }}
+    {{#  if((d.status===1 || d.status===2 || d.status===3) && d.roundNo===1 && levels.length && d.curLevelNo===levels[0].levelNo){ }}
+    <button shiro:hasPermission="isAccFlow:report" class="pear-btn pear-btn-danger pear-btn-sm" lay-event="withdraw">撤回</button>
+    {{#  } }}
+    {{#  if(d.status===4){ }}
+    <button shiro:hasPermission="isAccFlow:archive" class="pear-btn pear-btn-sm" lay-event="archive">归档作废</button>
+    {{#  } }}
+</script>
+
+<th:block th:include="include :: footer"/>
+<script th:inline="javascript">
+    layui.use(['table', 'form', 'jquery', 'layer'], function () {
+        let table = layui.table, form = layui.form, $ = layui.jquery, layer = layui.layer;
+        let MP = rootPath + "/isAccFlow/";
+        // 启用层级链条（平台配置），转交时选目标级
+        let levels = [[${levels}]] || [];
+        let scope = 'all';
+
+        function levelName(no) {
+            for (let i = 0; i < levels.length; i++) { if (levels[i].levelNo === no) return levels[i].levelName; }
+            return '第' + no + '级';
+        }
+        function levelText(no) {
+            for (let i = 0; i < levels.length; i++) { if (levels[i].levelNo === no) return '第' + no + '级 ' + levels[i].levelName; }
+            return '第' + no + '级';
+        }
+
+        function render(url, where) {
+            table.render({
+                elem: '#af-table', url: url, method: 'get', where: where || {}, page: true, skin: 'line',
+                cols: [[
+                    {field: 'flowNo', title: '事故单号', width: 165},
+                    {field: 'accidentNo', title: '关联事故', width: 130},
+                    {field: 'accidentLevel', title: '事故等级', width: 90, align: 'center',
+                        templet: function (d) { return d.accidentLevel ? ('等级' + d.accidentLevel) : '—'; }},
+                    {field: 'reporter', title: '上报人', width: 100},
+                    {field: 'reportTime', title: '上报时间', width: 165, align: 'center'},
+                    {field: 'curLevelNo', title: '当前待办层级', width: 160, align: 'center',
+                        templet: function (d) {
+                            if (d.curLevelNo === null || d.curLevelNo === undefined) return '—';
+                            return levelText(d.curLevelNo) + '（第' + (d.roundNo||1) + '轮）';
+                        }},
+                    {field: 'status', title: '状态', width: 95, align: 'center', templet: '#af-status'},
+                    {field: 'conclusion', title: '结论', width: 85, align: 'center', templet: '#af-conclusion'},
+                    {field: 'closedTime', title: '结案时间', width: 165, align: 'center'},
+                    {title: '操作', width: 280, align: 'center', fixed: 'right', toolbar: '#af-bar'}
+                ]]
+            });
+        }
+        render(MP + 'list');
+        refreshStats();
+
+        window.loadScope = function (s) {
+            scope = s;
+            if (s === 'todo') render(MP + 'myTodo');
+            else if (s === 'reported') render(MP + 'myReported');
+            else render(MP + 'list');
+        };
+
+        form.on('submit(af-query)', function (data) {
+            scope = 'all';
+            render(MP + 'list', data.field);
+            return false;
+        });
+
+        window.openReport = function () {
+            layer.open({
+                type: 1, title: '上报事故单（上报即进第一级）', area: ['520px', '360px'],
+                content:
+                    '<form class="layui-form" style="padding:20px 10px 0 0;" id="report-form">' +
+                    '  <div class="layui-form-item"><label class="layui-form-label">关联事故ID</label>' +
+                    '    <div class="layui-input-block"><input name="accidentId" class="layui-input" placeholder="t_is_accident 主键"></div></div>' +
+                    '  <div class="layui-form-item"><label class="layui-form-label">上报事由</label>' +
+                    '    <div class="layui-input-block"><textarea name="remark" class="layui-textarea" placeholder="事故等级取事故台账，不由上报人填；落单后事故哪起/等级不再可改"></textarea></div></div>' +
+                    '</form>',
+                btn: ['上报', '取消'],
+                yes: function (idx) {
+                    let f = {};
+                    $('#report-form').serializeArray().forEach(function (p) { if (p.value !== '') f[p.name] = p.value; });
+                    $.post(MP + 'report', f, function (r) {
+                        layer.msg(r.msg, {icon: r.code === 200 ? 1 : 2});
+                        if (r.code === 200) { layer.close(idx); reloadAll(); }
+                    });
+                }
+            });
+        };
+
+        window.runUrge = function () {
+            let loading = layer.load();
+            $.post(MP + 'urge', {}, function (r) {
+                layer.close(loading);
+                layer.alert(r.msg, {icon: r.code === 200 ? 1 : 2, title: '催办扫描'});
+            });
+        };
+
+        table.on('tool(af-table)', function (obj) {
+            let d = obj.data;
+            if (obj.event === 'detail') {
+                $.get(MP + 'detail', {id: d.id}, function (r) {
+                    if (r.code !== 200) { layer.msg(r.msg, {icon: 2}); return; }
+                    let f = r.data.flow, handles = r.data.handles, urges = r.data.urges, cur = r.data.curLevel, html = '';
+                    html += '<div style="line-height:1.9;margin-bottom:8px;">'
+                        + '<b>' + f.flowNo + '</b><br>'
+                        + '关联事故：' + (f.accidentNo || '') + '（等级' + (f.accidentLevel || '—') + '）　上报人：' + f.reporter + '<br>'
+                        + '上报时间：' + (f.reportTime || '—') + '　当前待办：'
+                        + (f.curLevelNo ? levelText(f.curLevelNo) : '—')
+                        + (cur ? ('　<b>该谁办：' + (cur.signerRoleName || ('角色'+cur.signerRoleId)) + '</b>') : '')
+                        + '　轮次：第' + (f.roundNo || 1) + '轮<br>'
+                        + '结案：' + (f.conclusion === 1 ? '办结' : f.conclusion === 2 ? '否决' : '未结案')
+                        + '　结案时间：' + (f.closedTime || '—')
+                        + '</div><hr><b>逐级办理意见</b>'
+                        + '<table class="layui-table" style="margin:8px 0;font-size:12px;"><thead><tr>'
+                        + '<th>时刻</th><th>轮次/层级</th><th>动作</th><th>落笔者</th><th>原办理人/代办原因</th><th>意见</th></tr></thead><tbody>';
+                    handles.forEach(function (s) {
+                        html += '<tr><td>' + (s.handleTime || '') + '</td>'
+                            + '<td>第' + (s.roundNo || '') + '轮 ' + (s.levelName || '—') + '</td>'
+                            + '<td>' + actName(s.action) + (s.targetLevelName ? ('→' + s.targetLevelName) : '') + '</td>'
+                            + '<td>' + (s.handler || '') + '</td>'
+                            + '<td>' + (s.agentFlag === 1
+                                ? ('原办理人 ' + (s.intendedHandler || '') + '<br><span style="color:#FF5722;">代办：' + (s.agentReason||'') + '</span>')
+                                : '本人') + '</td>'
+                            + '<td>' + (s.comment || '') + '</td></tr>';
+                    });
+                    if (!handles.length) { html += '<tr><td colspan="6">暂无办理记录</td></tr>'; }
+                    html += '</tbody></table><b>催办留痕</b>'
+                        + '<table class="layui-table" style="margin:8px 0;font-size:12px;"><thead><tr>'
+                        + '<th>催办时刻</th><th>卡住层级</th><th>已卡小时</th><th>话术</th></tr></thead><tbody>';
+                    urges.forEach(function (u) {
+                        html += '<tr><td>' + (u.urgedAt || '') + '</td><td>' + (u.levelName || '')
+                            + '</td><td>' + (u.overdueHours || '') + '</td><td>' + (u.detail || '') + '</td></tr>';
+                    });
+                    if (!urges.length) { html += '<tr><td colspan="4">暂无催办</td></tr>'; }
+                    html += '</tbody></table>';
+                    layer.open({type: 1, title: '事故单全貌与办理留痕', area: ['920px', '600px'], content: html});
+                });
+            } else if (obj.event === 'handle') {
+                openHandle(d);
+            } else if (obj.event === 'resubmit') {
+                layer.prompt({title: '补齐材料后重新上报（从第一级重头走），填补齐说明', formType: 2, value: ''},
+                    function (note, idx) {
+                        $.post(MP + 'resubmit', {id: d.id, supplementNote: note}, function (r) {
+                            layer.close(idx);
+                            layer.msg(r.msg, {icon: r.code === 200 ? 1 : 2});
+                            if (r.code === 200) reloadAll();
+                        });
+                    });
+            } else if (obj.event === 'withdraw') {
+                layer.confirm('只在单子还没进任何一级办理前可撤回。确认撤回作废？', {icon: 3, title: '撤回作废'},
+                    function (idx) {
+                        $.post(MP + 'withdraw', {id: d.id}, function (r) {
+                            layer.close(idx);
+                            layer.msg(r.msg, {icon: r.code === 200 ? 1 : 2});
+                            if (r.code === 200) reloadAll();
+                        });
+                    });
+            } else if (obj.event === 'archive') {
+                layer.confirm('归档只翻"已作废"，结论与结案时间原样封死、谁都改不了。确认归档？',
+                    {icon: 3, title: '管理员归档'},
+                    function (idx) {
+                        $.post(MP + 'archive', {id: d.id}, function (r) {
+                            layer.close(idx);
+                            layer.msg(r.msg, {icon: r.code === 200 ? 1 : 2});
+                            if (r.code === 200) reloadAll();
+                        });
+                    });
+            }
+        });
+
+        function openHandle(d) {
+            let opts = '';
+            levels.forEach(function (l) {
+                if (l.levelNo !== d.curLevelNo) opts += '<option value="' + l.levelNo + '">第' + l.levelNo + '级 ' + l.levelName + '</option>';
+            });
+            layer.open({
+                type: 1, title: '第' + d.curLevelNo + '级办理 ' + d.flowNo, area: ['560px', '520px'],
+                content:
+                    '<form class="layui-form" style="padding:20px 10px 0 0;" id="handle-form">' +
+                    '  <div class="layui-form-item"><label class="layui-form-label">动作</label>' +
+                    '    <div class="layui-input-block"><select name="action" lay-filter="handle-action-sel">' +
+                    '      <option value="FINISH">办结（进下一级；末级办结即结案）</option>' +
+                    '      <option value="VETO">否决（直接结案为否决，流程终止）</option>' +
+                    '      <option value="SUPPLEMENT">补充材料（退回上报人，重报重走第一级）</option>' +
+                    '      <option value="TRANSFER">转交他级</option>' +
+                    '    </select></div></div>' +
+                    '  <div class="layui-form-item" id="target-box" style="display:none;"><label class="layui-form-label">转交目标级</label>' +
+                    '    <div class="layui-input-block"><select name="targetLevelNo">' + opts + '</select></div></div>' +
+                    '  <div class="layui-form-item"><label class="layui-form-label">本级意见</label>' +
+                    '    <div class="layui-input-block"><textarea name="comment" class="layui-textarea" placeholder="必须写下本级意见；转交要把本级意见记全，不许只写转走了"></textarea></div></div>' +
+                    '  <hr><div class="layui-form-item"><label class="layui-form-label">代办(可空)</label>' +
+                    '    <div class="layui-input-block"><input name="intendedHandler" class="layui-input" placeholder="原办理人；留空=本人办理"></div></div>' +
+                    '  <div class="layui-form-item"><label class="layui-form-label">代办原因</label>' +
+                    '    <div class="layui-input-block"><input name="agentReason" class="layui-input" placeholder="代办必填；代办不改层级归属"></div></div>' +
+                    '</form>',
+                success: function () {
+                    form.render();
+                    form.on('select(handle-action-sel)', function (p) {
+                        $('#target-box').css('display', p.value === 'TRANSFER' ? '' : 'none');
+                    });
+                },
+                btn: ['确认办理', '取消'],
+                yes: function (idx) {
+                    let f = {};
+                    $('#handle-form').serializeArray().forEach(function (p) { if (p.value !== '') f[p.name] = p.value; });
+                    f.id = d.id;
+                    $.post(MP + 'handle', f, function (r) {
+                        layer.msg(r.msg, {icon: r.code === 200 ? 1 : 2});
+                        if (r.code === 200) { layer.close(idx); reloadAll(); }
+                    });
+                }
+            });
+        }
+
+        function actName(a) {
+            return {FINISH:'办结', VETO:'否决', SUPPLEMENT:'补充材料', TRANSFER:'转交他级',
+                REPORT:'上报', RESUBMIT:'补齐重报', WITHDRAW:'撤回', ARCHIVE:'归档'}[a] || a;
+        }
+        function reloadAll() {
+            table.reload('af-table');
+            refreshStats();
+        }
+        function refreshStats() {
+            $.get(MP + 'stats', {}, function (r) {
+                if (!r.data) return;
+                $('#st-todo').text(r.data.myTodo);
+                $('#st-investigating').text(r.data.investigating);
+                $('#st-determined').text(r.data.determined);
+                $('#st-disposing').text(r.data.disposing);
+                $('#st-reported').text(r.data.reported);
+                $('#st-finished').text(r.data.finished);
+                $('#st-vetoed').text(r.data.vetoed);
+            });
+        }
+    });
+</script>
+</body>
+</html>
