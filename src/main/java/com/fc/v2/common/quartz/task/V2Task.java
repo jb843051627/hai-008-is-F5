@@ -3,6 +3,7 @@ import cn.hutool.core.date.DateUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fc.v2.model.auto.TSysUser;
 import com.fc.v2.service.ITIsHazTaskService;
+import com.fc.v2.service.ITIsAccFlowService;
 import com.fc.v2.service.ITIsRectApplyService;
 import com.fc.v2.service.ITSysUserService;
 import com.fc.v2.service.haz.RoundScreen;
@@ -29,6 +30,9 @@ public class V2Task {
 
 	@Autowired
 	private ITIsRectApplyService rectApplyService;
+
+	@Autowired
+	private ITIsAccFlowService accFlowService;
 
     /**
      * 无参的任务
@@ -72,5 +76,16 @@ public class V2Task {
 	{
 		UrgeScreen screen = rectApplyService.urgeScan();
 		System.out.println("整改申请催办：" + screen.getMessage() + " 执行时间:" + DateUtil.now());
+	}
+
+	/**
+	 * 事故调查处置层级超时催办（由定时任务配置：v2Task.urgeAccFlow()）。
+	 * 只催在途、当前有待办层级且卡在某一层超过该层时限的事故单；同一轮同一级只催一次并留痕。
+	 * 已作废/已结案/退回补材料的单扫不到，催办不碰单子任何一栏。
+	 */
+	public void urgeAccFlow()
+	{
+		com.fc.v2.service.acc.UrgeScreen screen = accFlowService.urgeScan();
+		System.out.println("事故单催办：" + screen.getMessage() + " 执行时间:" + DateUtil.now());
 	}
 }
